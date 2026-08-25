@@ -63,7 +63,8 @@ jobs:
           sed -i "s|Inter-[0-9][0-9.]*\.zip|Inter-$NEW_INTER.zip|g" .SRCINFO
           sed -i "s|font-patcher-[0-9][0-9.]*::|font-patcher-$NEW_NF::|" .SRCINFO
           sed -i "s|nerd-fonts/releases/download/v[0-9][0-9.]*/|nerd-fonts/releases/download/v$NEW_NF/|" .SRCINFO
-          sed -i "s/^	pkgver = .*/	pkgver = ${NEW_INTER}_${NEW_NF}/" .SRCINFO
+          TAB=$(printf '\t')
+          sed -i "s/^${TAB}pkgver = .*/${TAB}pkgver = ${NEW_INTER}_${NEW_NF}/" .SRCINFO
           awk -v s1="$S1" -v s2="$S2" '
             /^\tsha256sums = / { i++; printf "\tsha256sums = %s\n", (i==1 ? s1 : s2); next }
             { print }
