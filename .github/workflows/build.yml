@@ -1,0 +1,73 @@
+name: Build & release
+
+on:
+  push:
+    branches: [master]
+    paths: ["PKGBUILD"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman-key --init
+          pacman -Syu --noconfirm git p7zip python fontforge subversion parallel
+
+      - name: Build package
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c "makepkg -f --noconfirm"
+
+      - name: Create pacman database
+        run: |
+          TAG=$(ls *.pkg.tar.zst | head -n1 | sed 's/-any\.pkg\.tar\.zst$//; s/^nerd-fonts-inter-//')
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+          repo-add nerd-fonts-inter.db.tar.gz *.pkg.tar.zst
+          cp nerd-fonts-inter.db.tar.gz nerd-fonts-inter.db
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            *.pkg.tar.zst*
+            nerd-fonts-inter.db
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: repo
+
+      - name: Publish release
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" *.pkg.tar.zst* *.db --clobber
+            exit 0
+          fi
+          {
+            echo 'Pacman repo for `nerd-fonts-inter`.'
+            echo ''
+            echo 'Add to `/etc/pacman.conf`:'
+            echo '```'
+            echo '[nerd-fonts-inter]'
+            echo 'SigLevel = Optional TrustAll'
+            echo "Server = https://github.com/${{ github.repository }}/releases/latest/download/"
+            echo '```'
+            echo ''
+            echo '`sudo pacman -Sy nerd-fonts-inter`'
+          } > body.md
+          gh release create "$TAG" *.pkg.tar.zst* *.db --title "nerd-fonts-inter $TAG" --notes-file body.md

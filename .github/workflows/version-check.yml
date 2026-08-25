@@ -1,0 +1,78 @@
+name: Version check
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check upstream versions
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          INTER=$(gh api repos/rsms/inter/releases/latest --jq '.tag_name' | sed 's/^v//')
+          NF=$(gh api repos/ryanoasis/nerd-fonts/releases/latest --jq '.tag_name' | sed 's/^v//')
+          echo "inter=$INTER" >> "$GITHUB_OUTPUT"
+          echo "nf=$NF" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with PKGBUILD
+        id: compare
+        env:
+          NEW_INTER: ${{ steps.versions.outputs.inter }}
+          NEW_NF: ${{ steps.versions.outputs.nf }}
+        run: |
+          CUR_INTER=$(grep '^_interver=' PKGBUILD | cut -d= -f2)
+          CUR_NF=$(grep '^_nfver=' PKGBUILD | cut -d= -f2)
+          if [ "$CUR_INTER" = "$NEW_INTER" ] && [ "$CUR_NF" = "$NEW_NF" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "Up to date: inter $CUR_INTER, nf $CUR_NF"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "New version: inter $CUR_INTER -> $NEW_INTER, nf $CUR_NF -> $NEW_NF"
+          fi
+
+      - name: Update PKGBUILD and .SRCINFO
+        if: steps.compare.outputs.updated == 'true'
+        env:
+          NEW_INTER: ${{ steps.versions.outputs.inter }}
+          NEW_NF: ${{ steps.versions.outputs.nf }}
+        run: |
+          sed -i "s/^_interver=.*/_interver=$NEW_INTER/" PKGBUILD
+          sed -i "s/^_nfver=.*/_nfver=$NEW_NF/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          # download sources to compute new checksums
+          curl -fLO "https://github.com/rsms/inter/releases/download/v$NEW_INTER/Inter-$NEW_INTER.zip"
+          curl -fLo font-patcher.zip "https://github.com/ryanoasis/nerd-fonts/releases/download/v$NEW_NF/FontPatcher.zip"
+          S1=$(sha256sum "Inter-$NEW_INTER.zip" | cut -d' ' -f1)
+          S2=$(sha256sum font-patcher.zip | cut -d' ' -f1)
+          rm -f "Inter-$NEW_INTER.zip" font-patcher.zip
+
+          # rewrite checksum + version lines in .SRCINFO
+          sed -i "s|inter/releases/download/v[0-9][0-9.]*/|inter/releases/download/v$NEW_INTER/|" .SRCINFO
+          sed -i "s|Inter-[0-9][0-9.]*\.zip|Inter-$NEW_INTER.zip|g" .SRCINFO
+          sed -i "s|font-patcher-[0-9][0-9.]*::|font-patcher-$NEW_NF::|" .SRCINFO
+          sed -i "s|nerd-fonts/releases/download/v[0-9][0-9.]*/|nerd-fonts/releases/download/v$NEW_NF/|" .SRCINFO
+          sed -i "s/^	pkgver = .*/	pkgver = ${NEW_INTER}_${NEW_NF}/" .SRCINFO
+          awk -v s1="$S1" -v s2="$S2" '
+            /^\tsha256sums = / { i++; printf "\tsha256sums = %s\n", (i==1 ? s1 : s2); next }
+            { print }
+          ' .SRCINFO > .SRCINFO.new && mv .SRCINFO.new .SRCINFO
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "update to inter $NEW_INTER / nerd-fonts $NEW_NF"
+          git push
+          # GITHUB_TOKEN pushes don't trigger the build workflow — dispatch it explicitly
+          gh workflow run build.yml --ref master
