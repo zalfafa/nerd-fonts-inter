@@ -28,8 +28,9 @@ jobs:
         run: |
           TAG=$(ls *.pkg.tar.zst | head -n1 | sed 's/-any\.pkg\.tar\.zst$//; s/^nerd-fonts-inter-//')
           echo "tag=$TAG" >> "$GITHUB_ENV"
-          rm -f nerd-fonts-inter.db
           repo-add nerd-fonts-inter.db.tar.gz *.pkg.tar.zst
+          # repo-add leaves a symlink db -> db.tar.gz; replace it with a real copy
+          rm -f nerd-fonts-inter.db
           cp nerd-fonts-inter.db.tar.gz nerd-fonts-inter.db
 
       - uses: actions/upload-artifact@v4
