@@ -66,6 +66,7 @@ jobs:
         working-directory: repo
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" *.pkg.tar.zst* *.db --clobber
