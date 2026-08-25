@@ -28,6 +28,7 @@ jobs:
         run: |
           TAG=$(ls *.pkg.tar.zst | head -n1 | sed 's/-any\.pkg\.tar\.zst$//; s/^nerd-fonts-inter-//')
           echo "tag=$TAG" >> "$GITHUB_ENV"
+          rm -f nerd-fonts-inter.db
           repo-add nerd-fonts-inter.db.tar.gz *.pkg.tar.zst
           cp nerd-fonts-inter.db.tar.gz nerd-fonts-inter.db
 
