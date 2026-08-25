@@ -71,3 +71,4 @@ jobs:
             echo '`sudo pacman -Sy nerd-fonts-inter`'
           } > body.md
           gh release create "$TAG" *.pkg.tar.zst* *.db --title "nerd-fonts-inter $TAG" --notes-file body.md
+
