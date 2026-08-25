@@ -27,7 +27,8 @@ jobs:
       - name: Create pacman database
         run: |
           TAG=$(ls *.pkg.tar.zst | head -n1 | sed 's/-any\.pkg\.tar\.zst$//; s/^nerd-fonts-inter-//')
-          echo "tag=$TAG" >> "$GITHUB_ENV"
+          # persist across jobs (GITHUB_ENV is job-local)
+          echo "$TAG" > tag.txt
           repo-add nerd-fonts-inter.db.tar.gz *.pkg.tar.zst
           # repo-add leaves a symlink db -> db.tar.gz; replace it with a real copy
           rm -f nerd-fonts-inter.db
@@ -39,6 +40,7 @@ jobs:
           path: |
             *.pkg.tar.zst*
             nerd-fonts-inter.db
+            tag.txt
 
   release:
     runs-on: ubuntu-latest
@@ -52,6 +54,15 @@ jobs:
           path: repo
 
       - name: Publish release
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(cat tag.txt)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          rm tag.txt
+
+      - name: Create release
         working-directory: repo
         env:
           GH_TOKEN: ${{ github.token }}
